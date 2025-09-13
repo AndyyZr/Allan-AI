@@ -1,46 +1,37 @@
-import streamlit as st
-from openai import OpenAI
+import gradio as gr
+from transformers import pipeline
 
-# Load API key from secrets
-client = OpenAI(api_key=st.secrets["OPENAI_API_KEY"])
+# Load an open-source chatbot model (Mistral-7B is strong and free to use)
+chatbot = pipeline(
+    "text-generation",
+    model="mistralai/Mistral-7B-Instruct-v0.2",
+    device_map="auto"
+)
 
-st.set_page_config(page_title="🤖 Allan AI Chat", layout="centered")
-st.title("🤖 Allan AI Chat")
+# Chat function with history
+def chat(message, history):
+    history = history or []
+    prompt = "".join([f"User: {u}\nAI: {a}\n" for u, a in history])
+    prompt += f"User: {message}\nAI:"
 
-# --- Store chat history ---
-if "messages" not in st.session_state:
-    st.session_state.messages = [
-        {"role": "system", "content": "You are a highly intelligent, friendly AI assistant. "
-                                      "You explain things clearly, give detailed answers, and "
-                                      "can adapt your tone depending on the user. "
-                                      "Always try to be helpful and engaging."},
-        {"role": "assistant", "content": "Hello! 👋 I'm your AI assistant. How can I help you today?"}
-    ]
+    response = chatbot(
+        prompt,
+        max_new_tokens=200,
+        do_sample=True,
+        temperature=0.7,
+        top_p=0.9
+    )[0]["generated_text"]
 
-# --- Show chat history ---
-for msg in st.session_state.messages:
-    if msg["role"] == "user":
-        st.markdown(f"🧑 **You:** {msg['content']}")
-    elif msg["role"] == "assistant":
-        st.markdown(f"🤖 **AI:** {msg['content']}")
+    # Extract only AI's answer (strip out the prompt)
+    answer = response.split("AI:")[-1].strip()
+    history.append((message, answer))
+    return answer, history
 
-# --- Input box ---
-prompt = st.chat_input("Type your message...")
+# Gradio Chat UI
+demo = gr.ChatInterface(
+    fn=chat,
+    title="My AI Chatbot 🤖",
+    description="An open-source chatbot powered by Mistral 7B. Works like ChatGPT!"
+)
 
-if prompt:
-    # Add user message
-    st.session_state.messages.append({"role": "user", "content": prompt})
-
-    # Query OpenAI with smarter model
-    with st.spinner("Thinking..."):
-        response = client.chat.completions.create(
-            model="gpt-4o",  # upgraded from gpt-4o-mini
-            messages=st.session_state.messages
-        )
-        reply = response.choices[0].message.content
-
-    # Add AI reply
-    st.session_state.messages.append({"role": "assistant", "content": reply})
-
-    # Refresh page to show new messages
-    st.rerun()
+demo.launch()
